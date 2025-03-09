@@ -9,9 +9,14 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002', // Updated to new backend port
         changeOrigin: true,
         // No rewrite - keep the /api prefix
+      },
+      '/socket.io': {
+        target: 'http://localhost:3002', // Updated to new backend port
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

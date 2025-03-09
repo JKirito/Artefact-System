@@ -29,20 +29,50 @@ function App() {
 
   // Connect to backend and setup socket
   useEffect(() => {
+    const setupSocket = () => {
+      // Initialize socket connection
+      console.log('Attempting to connect to Socket.IO server at http://localhost:3002');
+      // Explicitly connect to the backend server
+      const socket = io('http://localhost:3002', {
+        path: '/socket.io/',
+        transports: ['websocket', 'polling'], // Prioritize WebSocket over polling
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        autoConnect: false, // We'll manually connect after health check
+        withCredentials: true // Enable CORS credentials
+      });
+      
+      socketRef.current = socket;
+      
+      return socket;
+    };
+    
     const checkBackendConnection = async () => {
       try {
+        // First try to connect to the backend API
         const response = await axios.get("/api/health");
         if (response.data.status === "healthy") {
           setIsConnected(true);
           setConnectionStatus("Connected to backend successfully!");
-
-          // Initialize socket connection
-          const socket = io();
+          
+          // Then set up the socket connection
+          const socket = setupSocket();
           socketRef.current = socket;
-
+          
+          // Set up all event handlers before connecting
           // Socket event handlers
           socket.on("connect", () => {
-            console.log("Socket connected!");
+            console.log("Socket connected with ID:", socket.id);
+          });
+
+          socket.on("connect_error", (error) => {
+            console.error("Socket connection error:", error);
+          });
+
+          socket.on("connect_timeout", () => {
+            console.error("Socket connection timeout");
           });
 
           socket.on("chat:typing", (data: { status: boolean }) => {
@@ -78,13 +108,18 @@ function App() {
           socket.on("disconnect", () => {
             console.log("Socket disconnected");
           });
+          
+          // Explicitly connect the socket after setting up all handlers
+          console.log('All Socket.IO handlers set up, connecting to backend...');
+          socket.connect();
         }
       } catch (error) {
         setIsConnected(false);
         setConnectionStatus(
-          "Failed to connect to backend. Make sure it's running."
+          "Failed to connect to backend. Make sure it's running on port 3002."
         );
         console.error("Backend connection error:", error);
+        console.log("Please start the backend server with: cd packages/backend && npm run dev");
       }
     };
 

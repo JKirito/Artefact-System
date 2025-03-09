@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "description": "Backend service with Node.js, TypeScript, and Vite",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
-    "dev": "npx vite",
-    "build": "npx vite build",
-    "preview": "npx vite preview",
-    "test": "npx vitest run"
+    "dev": "nodemon",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +23,9 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.5",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.12",
     "vite-plugin-node": "^4.0.0",

@@ -1,9 +1,9 @@
-import express from 'express';
-import { handlePrompt } from '../controllers/openai.controller';
+import { handlePrompt } from "@/controllers/openai.controller";
+import express from "express";
 
 const router = express.Router();
 
 // POST endpoint to handle OpenAI prompts
-router.post('/prompt', handlePrompt);
+router.post("/prompt", handlePrompt);
 
 export default router;

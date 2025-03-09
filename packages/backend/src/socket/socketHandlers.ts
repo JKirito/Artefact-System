@@ -18,8 +18,16 @@ const openai = new OpenAI({
 });
 
 export function setupSocketHandlers(io: Server) {
+  console.log('Setting up socket handlers...');
+  
+  // Log all socket events for debugging
+  io.engine.on('connection', (socket) => {
+    console.log('New transport connection:', socket.id);
+  });
+  
   io.on('connection', (socket: Socket) => {
     console.log('Client connected:', socket.id);
+    console.log('Transport used:', socket.conn.transport.name);
 
     // Handle chat messages
     socket.on('chat:message', async (message: string) => {
