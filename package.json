@@ -18,5 +18,9 @@
   "license": "ISC",
   "devDependencies": {
     "lerna": "^8.2.1"
+  },
+  "dependencies": {
+    "@types/uuid": "^10.0.0",
+    "uuid": "^11.1.0"
   }
 }

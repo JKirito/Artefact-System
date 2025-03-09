@@ -1,0 +1,122 @@
+.artifact-window-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.artifact-window-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.artifact-window {
+  width: 50%;
+  height: 100%;
+  background-color: #1a1a1a;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s ease-in-out;
+}
+
+.artifact-window-open {
+  transform: translateX(0) !important;
+}
+
+.artifact-window-close {
+  transform: translateX(100%) !important;
+}
+
+.artifact-window-header {
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.artifact-window-header h2 {
+  margin: 0;
+  color: #646cff;
+  font-size: 1.2rem;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.artifact-window-content {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  background-color: #121212;
+}
+
+.artifact-window-content .markdown-content {
+  background-color: #1e1e1e;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.artifact-window-footer {
+  padding: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.copy-button {
+  background-color: #646cff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+}
+
+.copy-button:hover {
+  background-color: #535bf2;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .artifact-window {
+    width: 80%;
+  }
+}
+
+@media (max-width: 480px) {
+  .artifact-window {
+    width: 100%;
+  }
+}
