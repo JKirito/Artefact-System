@@ -1,0 +1,40 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.card {
+  padding: 2em;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.connection-status {
+  padding: 1.5em;
+  border-radius: 8px;
+  margin-top: 2rem;
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+
+.connected {
+  background-color: rgba(0, 128, 0, 0.1);
+  border: 1px solid rgba(0, 128, 0, 0.3);
+}
+
+.disconnected {
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+}
+
+code {
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: monospace;
+}
