@@ -3,24 +3,14 @@ import axios from "axios";
 import { io, Socket } from "socket.io-client";
 import { Message, Artifact } from "../types";
 
-// Helper function to extract code from streaming content
-const extractCodeFromContent = (content: string): { language: string, code: string, title: string } | null => {
-  const codeMatch = content.match(/```([\w-]*)\s*([\s\S]*?)```/);
-  if (codeMatch) {
-    const language = codeMatch[1]?.trim() || 'text';
-    const code = codeMatch[2].trim();
-    
-    // Extract title from first line if it contains filename
-    let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
-    const firstLine = code.split('\n')[0];
-    if (firstLine && firstLine.includes('filename:')) {
-      title = firstLine.replace('//', '').trim();
-    }
-    
-    return { language, code, title };
-  }
-  return null;
-};
+/**
+ * Enum for prompt types to help with code completion
+ */
+export enum PromptType {
+  DEFAULT = 'default',
+  FRONTEND = 'frontend',
+  BACKEND = 'backend'
+}
 
 interface UseSocketReturn {
   isConnected: boolean;
@@ -34,7 +24,7 @@ interface UseSocketReturn {
   openArtifact: (artifact: Artifact) => void;
   closeArtifact: () => void;
   toggleArtifact: () => void;
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, promptType?: PromptType) => void;
 }
 
 export const useSocket = (): UseSocketReturn => {
@@ -47,11 +37,10 @@ export const useSocket = (): UseSocketReturn => {
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   
-  // Buffer for collecting code artifact chunks during streaming
-  const artifactBufferRef = useRef<string>("");
-  const isCollectingArtifactRef = useRef<boolean>(false);
-
+  // Socket reference
   const socketRef = useRef<Socket | null>(null);
+
+
 
   useEffect(() => {
     const setupSocket = () => {
@@ -107,81 +96,8 @@ export const useSocket = (): UseSocketReturn => {
           socket.on("chat:response:chunk", (data: { content: string }) => {
             // Only update the current response if there's actual content
             if (data.content && data.content.trim()) {
-              // Check for artifact markers in the streaming content
-              if (data.content.includes('<CODE_ARTIFACT>')) {
-                // Start collecting artifact
-                isCollectingArtifactRef.current = true;
-                
-                // Split content to get the part before <CODE_ARTIFACT>
-                const parts = data.content.split('<CODE_ARTIFACT>');
-                if (parts[0] && parts[0].trim()) {
-                  // Add the text before the artifact marker to the chat
-                  setCurrentResponse((prev) => prev + parts[0]);
-                }
-                
-                // Start collecting the artifact content
-                artifactBufferRef.current = '';
-                
-                // If there's content after the tag in this chunk, add it to the buffer
-                if (parts.length > 1 && parts[1]) {
-                  artifactBufferRef.current += parts[1];
-                }
-                
-                return;
-              }
-              
-              // Check if we're currently collecting an artifact
-              if (isCollectingArtifactRef.current) {
-                // Check if this chunk contains the end of the artifact
-                if (data.content.includes('</CODE_ARTIFACT>')) {
-                  // Split content to get the part before </CODE_ARTIFACT>
-                  const parts = data.content.split('</CODE_ARTIFACT>');
-                  
-                  // Add the first part to our artifact buffer
-                  if (parts[0]) {
-                    artifactBufferRef.current += parts[0];
-                  }
-                  
-                  // Now we have a complete artifact, process it
-                  const completeArtifact = artifactBufferRef.current;
-                  
-                  // Extract code from the artifact
-                  const extractedCode = extractCodeFromContent(completeArtifact);
-                  if (extractedCode) {
-                    const { language, code, title } = extractedCode;
-                    
-                    // Create and show the artifact
-                    const newArtifact: Artifact = {
-                      id: `artifact-${Date.now()}`,
-                      content: `\`\`\`${language}\n${code}\n\`\`\``,
-                      language,
-                      title,
-                      timestamp: new Date(),
-                    };
-                    
-                    setArtifact(newArtifact);
-                    setIsArtifactOpen(true);
-                    console.log('Created artifact from streaming content:', newArtifact);
-                  }
-                  
-                  // Reset the artifact collection state
-                  isCollectingArtifactRef.current = false;
-                  artifactBufferRef.current = '';
-                  
-                  // If there's content after the closing tag, add it to the chat
-                  if (parts.length > 1 && parts[1] && parts[1].trim()) {
-                    setCurrentResponse((prev) => prev + parts[1]);
-                  }
-                  
-                  return;
-                }
-                
-                // Still collecting the artifact, add to buffer
-                artifactBufferRef.current += data.content;
-                return;
-              }
-              
-              // Regular text, not part of an artifact
+              // The backend should now handle the artifact extraction and cleaning
+              // Just update the current response with the cleaned content from the backend
               setCurrentResponse((prev) => prev + data.content);
             }
           });
@@ -189,17 +105,15 @@ export const useSocket = (): UseSocketReturn => {
           socket.on(
             "chat:response:complete",
             (data: { id: string; content: string }) => {
-              // Reset artifact collection state when response is complete
-              isCollectingArtifactRef.current = false;
-              artifactBufferRef.current = '';
+              // Response is complete
               
               // Add the complete message to the messages array
-              // The Message component will handle filtering out CODE_ARTIFACT tags
+              // The backend now provides a clean version without artifact tags
               setMessages((prev) => [
                 ...prev,
                 {
                   id: data.id,
-                  content: data.content,
+                  content: data.content, // This should be clean already from backend
                   sender: "ai",
                   timestamp: new Date(),
                 },
@@ -225,6 +139,48 @@ export const useSocket = (): UseSocketReturn => {
             };
             setArtifact(newArtifact);
             setIsArtifactOpen(true);
+          });
+
+          // Extract code artifacts from AI messages
+          socket.on("chat:response", (data: { content: string }) => {
+            const regex = /<CODE_ARTIFACT>([\s\S]*?)<\/CODE_ARTIFACT>/g;
+            let match;
+            
+            // Extract all code artifacts from the message
+            while ((match = regex.exec(data.content)) !== null) {
+              const artifactContent = match[1].trim();
+              
+              // Extract language from markdown code block if present
+              let language = "";
+              const codeBlockMatch = artifactContent.match(/```([a-zA-Z0-9]+)\n/); 
+              if (codeBlockMatch) {
+                language = codeBlockMatch[1];
+              }
+              
+              // Extract filename if present
+              let title = "Code Artifact";
+              const filenameMatch = artifactContent.match(/\/\/\s*filename:\s*([^\n]+)/i);
+              if (filenameMatch) {
+                title = filenameMatch[1].trim();
+              }
+              
+              // Clean the content (remove the markdown code block syntax)
+              let cleanContent = artifactContent.replace(/```[a-zA-Z0-9]*\n/g, "").replace(/```$/g, "");
+              
+              // Create and set the artifact
+              const newArtifact: Artifact = {
+                id: Date.now().toString(),
+                content: cleanContent,
+                language: language,
+                title: title,
+                timestamp: new Date(),
+              };
+              
+              setArtifact(newArtifact);
+              if (!isArtifactOpen) {
+                setIsArtifactOpen(true);
+              }
+            }
           });
 
           socket.on("disconnect", () => {
@@ -255,7 +211,12 @@ export const useSocket = (): UseSocketReturn => {
     };
   }, []);
 
-  const sendMessage = (message: string) => {
+  /**
+   * Send a message to the AI assistant
+   * @param message The message text
+   * @param promptType Optional prompt type for specialized assistance
+   */
+  const sendMessage = (message: string, promptType: PromptType = PromptType.DEFAULT) => {
     if (!message.trim()) {
       setError("Please enter a message");
       return;
@@ -274,9 +235,12 @@ export const useSocket = (): UseSocketReturn => {
 
     setMessages((prev) => [...prev, userMessage]);
 
-    // Send message to server via socket
+    // Send message to server via socket with prompt type
     if (socketRef.current) {
-      socketRef.current.emit("chat:message", message);
+      socketRef.current.emit("chat:message", {
+        content: message,
+        promptType: promptType
+      });
     }
   };
 

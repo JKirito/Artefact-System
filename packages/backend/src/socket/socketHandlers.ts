@@ -1,23 +1,8 @@
 import { Server, Socket } from 'socket.io';
-import { generateResponse, setSocketServer } from '../services/openai';
+import { generateResponse, setSocketServer, PromptType } from '../services/openai';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-
-// Define types for our response queue
-interface QueuedChunk {
-  type: 'text' | 'artifact-start' | 'artifact-content' | 'artifact-end';
-  content: string;
-}
-
-// Artifact state interface
-interface ArtifactState {
-  id: string;
-  content: string;
-  language?: string;
-  title?: string;
-  isComplete: boolean;
-}
 
 // Load environment variables
 dotenv.config();
@@ -34,54 +19,24 @@ const openai = new OpenAI({
   apiKey: apiKey,
 });
 
-// Process the queue of chunks and send to client
-function processQueue(socket: Socket, queue: QueuedChunk[], artifactState: ArtifactState, forceClear: boolean = false) {
-  // Collect all text chunks to send at once
-  let textToSend = '';
+// Helper function to process artifacts from the content
+function extractArtifactsFromContent(content: string, socket: Socket) {
+  // Look for code artifact tags
+  const artifactRegex = /<CODE_ARTIFACT>([\s\S]*?)<\/CODE_ARTIFACT>/g;
+  let match;
+  let artifactsFound = 0;
   
-  // Process chunks until we hit an artifact marker or empty the queue
-  while (queue.length > 0) {
-    const chunk = queue[0];
+  // Find all artifacts and extract them
+  while ((match = artifactRegex.exec(content)) !== null) {
+    const artifactContent = match[1].trim();
+    artifactsFound++;
     
-    if (chunk.type === 'text') {
-      // Accumulate text chunks
-      textToSend += chunk.content;
-      queue.shift(); // Remove the processed chunk
-    } else if (chunk.type === 'artifact-start') {
-      // We've hit an artifact start, so send any accumulated text first
-      if (textToSend) {
-        socket.emit('chat:response:chunk', { content: textToSend });
-        textToSend = '';
-      }
-      queue.shift(); // Remove the artifact-start marker
-      // Don't process further until we have the complete artifact
-      if (!forceClear) break;
-    } else if (chunk.type === 'artifact-content') {
-      // Just remove artifact content chunks, they're accumulated in artifactState
-      queue.shift();
-    } else if (chunk.type === 'artifact-end') {
-      // We've hit the end of an artifact, finalize and send it
-      finalizeArtifact(socket, artifactState);
-      queue.shift(); // Remove the artifact-end marker
-    }
-  }
-  
-  // Send any remaining text
-  if (textToSend) {
-    socket.emit('chat:response:chunk', { content: textToSend });
-  }
-}
-
-// Finalize and send an artifact to the client
-function finalizeArtifact(socket: Socket, artifactState: ArtifactState) {
-  if (!artifactState.id) return;
-  
-  // Extract code from the artifact if not already done
-  if (!artifactState.language) {
-    const codeMatch = artifactState.content.match(/```([\w-]*)\s*([\s\S]*?)```/);
-    if (codeMatch) {
-      const language = codeMatch[1]?.trim() || 'text';
-      const code = codeMatch[2].trim();
+    // Extract code block from artifact content
+    const codeBlockMatch = artifactContent.match(/```([\w-]*)?\n([\s\S]*?)```/);
+    
+    if (codeBlockMatch) {
+      const language = codeBlockMatch[1]?.trim() || 'text';
+      const code = codeBlockMatch[2].trim();
       
       // Extract title from first line if it contains filename
       let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
@@ -90,33 +45,26 @@ function finalizeArtifact(socket: Socket, artifactState: ArtifactState) {
         title = firstLine.replace('//', '').trim();
       }
       
-      artifactState.language = language;
-      artifactState.title = title;
-    }
-  }
-  
-  // Send the artifact to the client
-  if (artifactState.content) {
-    const codeMatch = artifactState.content.match(/```([\w-]*)\s*([\s\S]*?)```/);
-    if (codeMatch) {
-      const language = artifactState.language || codeMatch[1]?.trim() || 'text';
-      const code = codeMatch[2].trim();
-      
+      // Send the artifact to the client
       socket.emit('artifact:new', {
-        id: artifactState.id,
-        content: `\`\`\`${language}\n${code}\n\`\`\``,
+        id: `artifact-${Date.now()}-${artifactsFound}`,
+        content: code,
         language,
-        title: artifactState.title || `${language.charAt(0).toUpperCase() + language.slice(1)} Code`
+        title
+      });
+    } else {
+      // If no code block found, use the entire artifact content
+      socket.emit('artifact:new', {
+        id: `artifact-${Date.now()}-${artifactsFound}`,
+        content: artifactContent,
+        language: 'text',
+        title: 'Code Artifact'
       });
     }
   }
   
-  // Reset the artifact state
-  artifactState.id = '';
-  artifactState.content = '';
-  artifactState.language = undefined;
-  artifactState.title = undefined;
-  artifactState.isComplete = false;
+  // Return a clean version without the artifact tags
+  return content.replace(/<CODE_ARTIFACT>([\s\S]*?)<\/CODE_ARTIFACT>/g, '');
 }
 
 export function setupSocketHandlers(io: Server) {
@@ -135,9 +83,28 @@ export function setupSocketHandlers(io: Server) {
     console.log('Transport used:', socket.conn.transport.name);
 
     // Handle chat messages
-    socket.on('chat:message', async (message: string) => {
+    socket.on('chat:message', async (message: { content: string; promptType?: string }) => {
       try {
-        console.log(`Received message from ${socket.id}:`, message);
+        // Extract message content and prompt type if present
+        const messageContent = typeof message === 'string' ? message : message.content;
+        let promptType = PromptType.DEFAULT;
+        
+        // Determine the prompt type
+        if (typeof message === 'object' && message.promptType) {
+          switch(message.promptType.toLowerCase()) {
+            case 'frontend':
+              promptType = PromptType.FRONTEND;
+              break;
+            case 'backend':
+              promptType = PromptType.BACKEND;
+              break;
+            default:
+              promptType = PromptType.DEFAULT;
+          }
+        }
+        
+        console.log(`Received message from ${socket.id}:`, messageContent);
+        console.log(`Using prompt type: ${promptType}`);
         
         // Emit a message received event to indicate typing has started
         socket.emit('chat:typing', { status: true });
@@ -146,43 +113,9 @@ export function setupSocketHandlers(io: Server) {
         const stream = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
-            { 
-              role: 'system', 
-              content: `You are a helpful assistant with programming expertise. 
-
-Very important: When you're about to provide code, you MUST use the following format:
-
-1. First, output the exact text "<CODE_ARTIFACT>" on its own line
-2. Then provide the code block with language specification, like this:
-   \`\`\`javascript
-   // Your code here
-   \`\`\`
-3. After the code block, output the exact text "</CODE_ARTIFACT>" on its own line
-
-For example:
-
-<CODE_ARTIFACT>
-\`\`\`javascript
-function hello() {
-  console.log('Hello world');
-}
-\`\`\`
-</CODE_ARTIFACT>
-
-If you're providing multiple code blocks as part of the same explanation, wrap each one separately.
-
-For substantial code examples (complete files or components), include a filename comment:
-
-<CODE_ARTIFACT>
-\`\`\`javascript
-// filename: example.js
-// Your code here...
-\`\`\`
-</CODE_ARTIFACT>
-
-This format is crucial as it helps our system distinguish between explanatory text and code examples.`
-            },
-            { role: 'user', content: message }
+            // System message will be set in the OpenAI service based on promptType
+            { role: 'system', content: '' },
+            { role: 'user', content: messageContent }
           ],
           stream: true,
           temperature: 0.7,
@@ -190,80 +123,125 @@ This format is crucial as it helps our system distinguish between explanatory te
         });
         
         let fullResponse = '';
-        
-        // Queue to hold chunks for processing
-        const chunkQueue: QueuedChunk[] = [];
-        
-        // Artifact state
-        const artifactState: ArtifactState = {
-          id: '',
-          content: '',
-          isComplete: false
-        };
+        let bufferedContent = ''; // Buffer to accumulate content that might contain artifact tags
         
         // Process the stream
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || '';
           if (content) {
             fullResponse += content;
+            bufferedContent += content;
             
-            // Process content to identify and queue chunks
-            if (content.includes('<CODE_ARTIFACT>')) {
-              // Split content by the artifact marker
-              const parts = content.split('<CODE_ARTIFACT>');
+            // Check if we have a complete artifact tag (both opening and closing tags)
+            if (bufferedContent.includes('<CODE_ARTIFACT>') && bufferedContent.includes('</CODE_ARTIFACT>')) {
+              // Find all complete artifact tags in the buffer
+              const regex = /<CODE_ARTIFACT>([\s\S]*?)<\/CODE_ARTIFACT>/g;
+              let match;
+              let lastIndex = 0;
+              let newBuffer = '';
               
-              // Add any text before the marker to the queue
-              if (parts[0] && parts[0].trim()) {
-                chunkQueue.push({
-                  type: 'text',
-                  content: parts[0]
-                });
+              // Process each complete artifact tag
+              while ((match = regex.exec(bufferedContent)) !== null) {
+                // Send any text before the artifact tag
+                if (match.index > lastIndex) {
+                  const textBefore = bufferedContent.substring(lastIndex, match.index);
+                  if (textBefore.trim()) {
+                    socket.emit('chat:response:chunk', { content: textBefore });
+                  }
+                }
+                
+                // Process the artifact
+                const artifactContent = match[1].trim();
+                
+                // Extract code block from artifact content
+                const codeBlockMatch = artifactContent.match(/```([\w-]*)?\n([\s\S]*?)```/);
+                
+                if (codeBlockMatch) {
+                  const language = codeBlockMatch[1]?.trim() || 'text';
+                  const code = codeBlockMatch[2].trim();
+                  
+                  // Extract title from first line if it contains filename
+                  let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
+                  const firstLine = code.split('\n')[0];
+                  if (firstLine && firstLine.includes('filename:')) {
+                    title = firstLine.replace('//', '').trim();
+                  }
+                  
+                  // Send the artifact to the client
+                  socket.emit('artifact:new', {
+                    id: `artifact-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                    content: code,
+                    language,
+                    title
+                  });
+                } else {
+                  // If no code block found, use the entire artifact content
+                  socket.emit('artifact:new', {
+                    id: `artifact-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                    content: artifactContent,
+                    language: 'text',
+                    title: 'Code Artifact'
+                  });
+                }
+                
+                lastIndex = match.index + match[0].length;
               }
               
-              // Start a new artifact
-              artifactState.id = uuidv4();
-              artifactState.content = '';
-              artifactState.isComplete = false;
-              
-              // Add the artifact start marker to the queue
-              chunkQueue.push({
-                type: 'artifact-start',
-                content: ''
-              });
-              
-              // If there's content after the marker, add it to the artifact content
-              if (parts.length > 1 && parts[1]) {
-                chunkQueue.push({
-                  type: 'artifact-content',
-                  content: parts[1]
-                });
-                artifactState.content += parts[1];
-              }
-            } else if (content.includes('</CODE_ARTIFACT>')) {
-              // Split content by the end marker
-              const parts = content.split('</CODE_ARTIFACT>');
-              
-              // Add the content before the end marker to the artifact
-              if (parts[0]) {
-                chunkQueue.push({
-                  type: 'artifact-content',
-                  content: parts[0]
-                });
-                artifactState.content += parts[0];
+              // Keep any remaining content after the last artifact tag
+              if (lastIndex < bufferedContent.length) {
+                newBuffer = bufferedContent.substring(lastIndex);
               }
               
-              // Mark the artifact as complete
-              chunkQueue.push({
-                type: 'artifact-end',
-                content: ''
-              });
-              artifactState.isComplete = true;
+              bufferedContent = newBuffer;
+            } 
+            // If we don't have complete tags yet, but the buffer is getting large, 
+            // or if we don't have any artifact tags at all, send the content
+            else if (!bufferedContent.includes('<CODE_ARTIFACT>') || bufferedContent.length > 500) {
+              // Send the entire buffer if it doesn't contain any artifact tags
+              if (!bufferedContent.includes('<CODE_ARTIFACT>')) {
+                socket.emit('chat:response:chunk', { content: bufferedContent });
+                bufferedContent = '';
+              }
+              // Otherwise, try to send any content before the first artifact tag
+              else if (bufferedContent.includes('<CODE_ARTIFACT>')) {
+                const parts = bufferedContent.split('<CODE_ARTIFACT>');
+                if (parts[0] && parts[0].trim()) {
+                  socket.emit('chat:response:chunk', { content: parts[0] });
+                  // Keep only the part after the tag in the buffer
+                  bufferedContent = '<CODE_ARTIFACT>' + parts.slice(1).join('<CODE_ARTIFACT>');
+                }
+              }
+            }
+          }
+        }
+        
+        // Process any remaining buffered content
+        if (bufferedContent) {
+          // Check if there are any artifact tags in the remaining buffer
+          if (bufferedContent.includes('<CODE_ARTIFACT>')) {
+            const regex = /<CODE_ARTIFACT>([\s\S]*?)<\/CODE_ARTIFACT>/g;
+            let match;
+            let lastIndex = 0;
+            
+            // Process each complete artifact tag
+            while ((match = regex.exec(bufferedContent)) !== null) {
+              // Send any text before the artifact tag
+              if (match.index > lastIndex) {
+                const textBefore = bufferedContent.substring(lastIndex, match.index);
+                if (textBefore.trim()) {
+                  socket.emit('chat:response:chunk', { content: textBefore });
+                }
+              }
               
-              // Extract code from the artifact
-              const codeMatch = artifactState.content.match(/```([\w-]*)\s*([\s\S]*?)```/);
-              if (codeMatch) {
-                const language = codeMatch[1]?.trim() || 'text';
-                const code = codeMatch[2].trim();
+              // Process the artifact
+              const artifactContent = match[1].trim();
+              
+              // Extract code block from artifact content
+              const codeBlockMatch = artifactContent.match(/```([\w-]*)?\n([\s\S]*?)```/);
+              
+              if (codeBlockMatch) {
+                const language = codeBlockMatch[1]?.trim() || 'text';
+                const code = codeBlockMatch[2].trim();
                 
                 // Extract title from first line if it contains filename
                 let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
@@ -272,52 +250,42 @@ This format is crucial as it helps our system distinguish between explanatory te
                   title = firstLine.replace('//', '').trim();
                 }
                 
-                // Update artifact state with extracted info
-                artifactState.language = language;
-                artifactState.title = title;
+                // Send the artifact to the client
+                socket.emit('artifact:new', {
+                  id: `artifact-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                  content: code,
+                  language,
+                  title
+                });
+              } else {
+                // If no code block found, use the entire artifact content
+                socket.emit('artifact:new', {
+                  id: `artifact-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                  content: artifactContent,
+                  language: 'text',
+                  title: 'Code Artifact'
+                });
               }
               
-              // If there's content after the end marker, add it as text
-              if (parts.length > 1 && parts[1]) {
-                chunkQueue.push({
-                  type: 'text',
-                  content: parts[1]
-                });
-              }
-            } else {
-              // If we're not at a marker, determine if this is part of an artifact or regular text
-              if (!artifactState.isComplete && artifactState.id) {
-                // We're in the middle of an artifact
-                chunkQueue.push({
-                  type: 'artifact-content',
-                  content: content
-                });
-                artifactState.content += content;
-              } else {
-                // Regular text
-                chunkQueue.push({
-                  type: 'text',
-                  content: content
-                });
-              }
+              lastIndex = match.index + match[0].length;
             }
             
-            // Process the queue to send chunks to the client
-            processQueue(socket, chunkQueue, artifactState);
+            // Send any remaining text after the last artifact tag
+            if (lastIndex < bufferedContent.length) {
+              const textAfter = bufferedContent.substring(lastIndex);
+              if (textAfter.trim()) {
+                socket.emit('chat:response:chunk', { content: textAfter });
+              }
+            }
+          } else {
+            // If no artifact tags, just send the entire buffer
+            if (bufferedContent.trim()) {
+              socket.emit('chat:response:chunk', { content: bufferedContent });
+            }
           }
         }
         
-        // Process any remaining items in the queue
-        if (chunkQueue.length > 0) {
-          processQueue(socket, chunkQueue, artifactState, true);
-        }
-        
-        // If there's an incomplete artifact, finalize it
-        if (artifactState.id && !artifactState.isComplete) {
-          finalizeArtifact(socket, artifactState);
-        }
-        
-        // Create a clean version of the response without artifact tags
+        // Create a clean version of the full response without artifact tags
         const cleanResponse = fullResponse.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
         
         // Emit the complete response when done
@@ -335,6 +303,38 @@ This format is crucial as it helps our system distinguish between explanatory te
           message: 'Failed to process your message. Please try again.' 
         });
         socket.emit('chat:typing', { status: false });
+      }
+    });
+
+    // Handle generate-with-prompt message
+    socket.on('chat:generate-with-prompt', async (data: { prompt: string; promptType?: string }) => {
+      try {
+        console.log(`Generating response for prompt from ${socket.id}`);
+        
+        // Determine prompt type
+        let promptType = PromptType.DEFAULT;
+        if (data.promptType) {
+          switch(data.promptType.toLowerCase()) {
+            case 'frontend':
+              promptType = PromptType.FRONTEND;
+              break;
+            case 'backend':
+              promptType = PromptType.BACKEND;
+              break;
+            default:
+              promptType = PromptType.DEFAULT;
+          }
+        }
+        
+        console.log(`Using prompt type: ${promptType}`);
+        
+        // Generate the response with the specified prompt type
+        const response = await generateResponse(data.prompt, socket.id, undefined, promptType);
+        
+        console.log('Response generation completed');
+      } catch (error) {
+        console.error('Error generating response:', error);
+        socket.emit('chat:error', { message: 'Failed to generate response' });
       }
     });
 
