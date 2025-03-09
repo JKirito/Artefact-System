@@ -1,45 +1,194 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent, useRef } from "react";
 import axios from "axios";
+import { io, Socket } from "socket.io-client";
 import "./App.css";
 
-function App() {
-  const [message, setMessage] = useState("Loading...");
-  const [isConnected, setIsConnected] = useState(false);
+interface Message {
+  id: string;
+  content: string;
+  sender: "user" | "ai";
+  timestamp: Date;
+}
 
+function App() {
+  const [_connectionStatus, setConnectionStatus] = useState("Loading...");
+  const [isConnected, setIsConnected] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const [currentResponse, setCurrentResponse] = useState("");
+  const [error, setError] = useState("");
+
+  const socketRef = useRef<Socket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom of messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, currentResponse]);
+
+  // Connect to backend and setup socket
   useEffect(() => {
     const checkBackendConnection = async () => {
       try {
         const response = await axios.get("/api/health");
         if (response.data.status === "healthy") {
           setIsConnected(true);
-          setMessage("Connected to backend successfully!");
+          setConnectionStatus("Connected to backend successfully!");
+
+          // Initialize socket connection
+          const socket = io();
+          socketRef.current = socket;
+
+          // Socket event handlers
+          socket.on("connect", () => {
+            console.log("Socket connected!");
+          });
+
+          socket.on("chat:typing", (data: { status: boolean }) => {
+            setIsTyping(data.status);
+          });
+
+          socket.on("chat:response:chunk", (data: { content: string }) => {
+            setCurrentResponse((prev) => prev + data.content);
+          });
+
+          socket.on(
+            "chat:response:complete",
+            (data: { id: string; content: string }) => {
+              // Add the complete message to the messages array
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: data.id,
+                  content: data.content,
+                  sender: "ai",
+                  timestamp: new Date(),
+                },
+              ]);
+              setCurrentResponse("");
+            }
+          );
+
+          socket.on("chat:error", (data: { message: string }) => {
+            setError(data.message);
+            setIsTyping(false);
+          });
+
+          socket.on("disconnect", () => {
+            console.log("Socket disconnected");
+          });
         }
       } catch (error) {
         setIsConnected(false);
-        setMessage("Failed to connect to backend. Make sure it's running.");
+        setConnectionStatus(
+          "Failed to connect to backend. Make sure it's running."
+        );
         console.error("Backend connection error:", error);
       }
     };
 
     checkBackendConnection();
+
+    // Cleanup socket connection on unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
   }, []);
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!message.trim()) {
+      setError("Please enter a message");
+      return;
+    }
+
+    // Clear error and input field
+    setError("");
+
+    // Add user message to chat
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: message,
+      sender: "user",
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Send message to server via socket
+    if (socketRef.current) {
+      socketRef.current.emit("chat:message", message);
+    }
+
+    // Clear input field
+    setMessage("");
+  };
 
   return (
     <div className="app">
-      <h1>Monorepo Frontend</h1>
-      <div className="card">
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <div
-        className={`connection-status ${
-          isConnected ? "connected" : "disconnected"
-        }`}
-      >
-        <h2>Backend Connection Status</h2>
-        <p>{message}</p>
-      </div>
+      {isConnected && (
+        <div className="chat-container">
+          <div className="messages-container">
+            {messages.length === 0 ? (
+              <div className="empty-chat">
+                <p>Send a message to start chatting with the AI</p>
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`message ${
+                    msg.sender === "user" ? "user-message" : "ai-message"
+                  }`}
+                >
+                  <div className="message-content">{msg.content}</div>
+                  <div className="message-timestamp">
+                    {msg.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+
+            {currentResponse && (
+              <div className="message ai-message">
+                <div className="message-content">{currentResponse}</div>
+              </div>
+            )}
+
+            {isTyping && (
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          <form onSubmit={handleSubmit} className="message-form">
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Type your message here..."
+              disabled={isTyping}
+            />
+            <button type="submit" disabled={isTyping || !message.trim()}>
+              Send
+            </button>
+          </form>
+
+          {error && <div className="error">{error}</div>}
+        </div>
+      )}
     </div>
   );
 }
