@@ -3,6 +3,7 @@ import { Message as MessageType } from "../../types";
 import { MessageComponent } from "./Message";
 import { ChatInput } from "./ChatInput";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
+import { PromptType } from "../../hooks/useSocket";
 import "./ChatContainer.css";
 
 interface ChatContainerProps {
@@ -10,7 +11,7 @@ interface ChatContainerProps {
   currentResponse: string;
   isTyping: boolean;
   error: string;
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, promptType?: PromptType) => void;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({

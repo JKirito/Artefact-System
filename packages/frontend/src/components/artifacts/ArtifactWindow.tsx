@@ -34,7 +34,8 @@ export const ArtifactWindow: React.FC<ArtifactWindowProps> = ({
   // If no artifact is available, show a placeholder
   const displayArtifact = artifact || {
     id: 'placeholder',
-    content: '```\nNo code artifacts available yet.\n```',
+    content: 'No code artifacts available yet.',
+    language: 'text',
     title: 'No Artifacts',
   };
 
@@ -45,8 +46,8 @@ export const ArtifactWindow: React.FC<ArtifactWindowProps> = ({
           <h2>{displayArtifact.title || 'Code Artifact'}</h2>
           <button className="close-button" onClick={onClose}>×</button>
         </div>
-        <div className="artifact-window-content">
-          <MarkdownRenderer content={displayArtifact.content} />
+        <div className="artifact-window-content" data-component-name="ArtifactWindow">
+          <MarkdownRenderer content={"```" + (displayArtifact.language || 'text') + "\n" + displayArtifact.content + "\n```"} />
         </div>
         <div className="artifact-window-footer">
           {displayArtifact.id !== 'placeholder' && (
