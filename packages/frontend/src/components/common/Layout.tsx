@@ -3,17 +3,27 @@ import './Layout.css';
 
 interface LayoutProps {
   children: ReactNode;
+  sidebar?: ReactNode;
+  onToggleSidebar?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, sidebar, onToggleSidebar }) => {
   return (
     <div className="app">
       <header className="app-header">
+        {onToggleSidebar && (
+          <button className="menu-button" onClick={onToggleSidebar}>
+            &#9776;
+          </button>
+        )}
         <h1>AI Chat Assistant</h1>
       </header>
-      <main className="app-main">
-        {children}
-      </main>
+      <div className="app-body">
+        {sidebar}
+        <main className="app-main">
+          {children}
+        </main>
+      </div>
       <footer className="app-footer">
         <p>&copy; {new Date().getFullYear()} AI Chat Assistant</p>
       </footer>
