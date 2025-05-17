@@ -286,11 +286,20 @@ export function setupSocketHandlers(io: Server) {
         
         // Create a clean version of the full response without artifact tags
         const cleanResponse = fullResponse.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
-        
+
+        // Further process the response to extract any remaining code blocks
+        let finalResponse = cleanResponse;
+        if (cleanResponse.includes('```')) {
+          const processed = await generateResponse('', socket.id, cleanResponse);
+          if (typeof processed === 'string') {
+            finalResponse = processed;
+          }
+        }
+
         // Emit the complete response when done
-        socket.emit('chat:response:complete', { 
+        socket.emit('chat:response:complete', {
           id: Date.now().toString(),
-          content: cleanResponse 
+          content: finalResponse
         });
         
         // Emit typing stopped

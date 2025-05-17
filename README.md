@@ -47,6 +47,18 @@ pnpm install
 
 This will install all dependencies for both packages.
 
+### Environment Variables
+
+The backend requires an OpenAI API key. Copy the example file and add your key:
+
+```bash
+cp packages/backend/.env.example packages/backend/.env
+# edit packages/backend/.env and set OPENAI_KEY=your_openai_key
+```
+
+Restart the backend after updating the file.
+
+
 ### Development
 
 To start both frontend and backend in development mode:
