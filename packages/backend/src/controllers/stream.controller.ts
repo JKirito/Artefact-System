@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { openai, getSystemPrompt, PromptType, extractArtifacts } from "@/services/openai";
+import { openai, getSystemPrompt, PromptType, extractArtifacts, defaultModel } from "@/services/openai";
 
 export async function streamChat(req: Request, res: Response) {
   const message = (req.query.message as string) || "";
@@ -18,7 +18,7 @@ export async function streamChat(req: Request, res: Response) {
 
   try {
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: defaultModel,
       messages: [
         { role: "system", content: getSystemPrompt(promptType) },
         { role: "user", content: message },
