@@ -21,6 +21,7 @@ interface UseChatReturn {
   closeArtifact: () => void;
   toggleArtifact: () => void;
   sendMessage: (message: string, promptType?: PromptType) => Promise<void>;
+  setChatMessages: (msgs: Message[]) => void;
   resetChat: () => void;
 }
 
@@ -181,6 +182,10 @@ export const useSocket = (): UseChatReturn => {
     setIsArtifactOpen((prev) => !prev);
   };
 
+  const setChatMessages = (msgs: Message[]) => {
+    setMessages(msgs);
+  };
+
   const resetChat = () => {
     setMessages([]);
     setCurrentResponse("");
@@ -201,6 +206,7 @@ export const useSocket = (): UseChatReturn => {
     closeArtifact,
     toggleArtifact,
     sendMessage,
+    setChatMessages,
     resetChat,
   };
 };
