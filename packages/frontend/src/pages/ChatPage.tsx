@@ -4,6 +4,7 @@ import { Layout } from "../components/common/Layout";
 import { ArtifactWindow } from "../components/artifacts/ArtifactWindow";
 import { Sidebar } from "../components/sidebar/Sidebar";
 import { useEffect, useState } from "react";
+import { useSettings } from "../context/SettingsContext";
 import "../App.css";
 
 function ChatPage() {
@@ -20,10 +21,16 @@ function ChatPage() {
     sendMessage,
     resetChat,
   } = useSocket();
+
+  const { defaultSidebarOpen } = useSettings();
   
   // State to track if there's a new artifact that hasn't been viewed
   const [hasNewArtifact, setHasNewArtifact] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(defaultSidebarOpen);
+
+  useEffect(() => {
+    setIsSidebarOpen(defaultSidebarOpen);
+  }, [defaultSidebarOpen]);
   
   // Reset the new artifact indicator when the artifact window is opened
   useEffect(() => {
