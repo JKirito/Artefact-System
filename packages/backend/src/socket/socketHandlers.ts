@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { generateResponse, setSocketServer, PromptType } from '../services/openai';
+import { generateResponse, setSocketServer, PromptType, getSystemPrompt } from '../services/openai';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
@@ -113,8 +113,7 @@ export function setupSocketHandlers(io: Server) {
         const stream = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
-            // System message will be set in the OpenAI service based on promptType
-            { role: 'system', content: '' },
+            { role: 'system', content: getSystemPrompt(promptType) },
             { role: 'user', content: messageContent }
           ],
           stream: true,
