@@ -42,7 +42,7 @@ export function setSocketServer(socketServer: SocketServer) {
  * @param content The response content to process
  * @param socketId The socket ID to emit artifacts to
  */
-function processResponseForArtifacts(content: string, socketId: string) {
+export function processResponseForArtifacts(content: string, socketId: string) {
   // Extract code blocks from the content
   const codeBlocks = extractCodeBlocks(content);
   
@@ -57,8 +57,10 @@ function processResponseForArtifacts(content: string, socketId: string) {
     });
   });
   
-  // Return a clean version of the content with artifact tags removed
-  return content.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
+  // Remove artifact tags and standalone code blocks from the returned text
+  let cleaned = content.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
+  cleaned = cleaned.replace(/```[\w-]*\n([\s\S]*?)```/g, '');
+  return cleaned;
 }
 
 /**
@@ -107,26 +109,23 @@ function extractCodeBlocks(markdown: string) {
   // If no tagged blocks found, fall back to regular code block extraction
   if (codeBlocks.length === 0) {
     const codeBlockRegex = /```([\w-]*)?\n([\s\S]*?)```/g;
-    
+
     while ((match = codeBlockRegex.exec(markdown)) !== null) {
       const language = match[1] || 'text';
       const content = match[2].trim();
-      
-      // Only include substantial code blocks (more than 5 lines or 100 chars)
-      if (content.split('\n').length > 5 || content.length > 100) {
-        // Extract title from first line if it contains filename
-        let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
-        const firstLine = content.split('\n')[0];
-        if (firstLine && firstLine.includes('filename:')) {
-          title = firstLine.replace('//', '').trim();
-        }
-        
-        codeBlocks.push({
-          language,
-          content,
-          title
-        });
+
+      // Extract title from first line if it contains filename
+      let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
+      const firstLine = content.split('\n')[0];
+      if (firstLine && firstLine.includes('filename:')) {
+        title = firstLine.replace('//', '').trim();
       }
+
+      codeBlocks.push({
+        language,
+        content,
+        title
+      });
     }
   }
 
