@@ -257,6 +257,13 @@ export const useSocket = (): UseSocketReturn => {
     setIsArtifactOpen(prev => !prev);
   };
 
+  const resetChat = () => {
+    setMessages([]);
+    setCurrentResponse("");
+    setArtifact(null);
+    setIsArtifactOpen(false);
+  };
+
   return {
     isConnected,
     connectionStatus,
@@ -269,6 +276,7 @@ export const useSocket = (): UseSocketReturn => {
     openArtifact,
     closeArtifact,
     toggleArtifact,
-    sendMessage
+    sendMessage,
+    resetChat
   };
 };

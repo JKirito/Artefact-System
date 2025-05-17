@@ -2,6 +2,7 @@ import { useSocket } from "./hooks/useSocket";
 import { ChatContainer } from "./components/chat/ChatContainer";
 import { Layout } from "./components/common/Layout";
 import { ArtifactWindow } from "./components/artifacts/ArtifactWindow";
+import { Sidebar } from "./components/sidebar/Sidebar";
 import { useEffect, useState } from "react";
 import "./App.css";
 
@@ -17,10 +18,12 @@ function App() {
     closeArtifact,
     toggleArtifact,
     sendMessage,
+    resetChat,
   } = useSocket();
   
   // State to track if there's a new artifact that hasn't been viewed
   const [hasNewArtifact, setHasNewArtifact] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Reset the new artifact indicator when the artifact window is opened
   useEffect(() => {
@@ -40,7 +43,10 @@ function App() {
   const hasMessages = messages.length > 0;
 
   return (
-    <Layout>
+    <Layout
+      sidebar={<Sidebar isOpen={isSidebarOpen} onNewChat={resetChat} />}
+      onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+    >
       {isConnected && (
         <ChatContainer
           messages={messages}
@@ -63,10 +69,10 @@ function App() {
       )}
       
       {/* Artifact Window */}
-      <ArtifactWindow 
-        isOpen={isArtifactOpen} 
-        onClose={closeArtifact} 
-        artifact={artifact} 
+      <ArtifactWindow
+        isOpen={isArtifactOpen}
+        onClose={closeArtifact}
+        artifact={artifact}
       />
     </Layout>
   );
