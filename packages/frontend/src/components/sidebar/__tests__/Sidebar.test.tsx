@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Sidebar, ChatSummary } from '../Sidebar';
 
@@ -20,7 +21,7 @@ describe('Sidebar', () => {
       { id: '1', title: 'First' },
       { id: '2', title: 'Second' },
     ];
-    const onSelect = vi.fn();
+    const onSelect = vi.fn<[string], void>();
     render(
       <Sidebar
         isOpen={true}
