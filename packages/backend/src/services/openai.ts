@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
-import { Server as SocketServer } from "socket.io";
 import { DEFAULT_SYSTEM_PROMPT, FRONTEND_SYSTEM_PROMPT, BACKEND_SYSTEM_PROMPT } from "../prompts/systemPrompt";
 
 // Load environment variables from .env file
@@ -16,51 +15,26 @@ if (!apiKey) {
 }
 
 // Initialize OpenAI client
-const openai = new OpenAI({
+export const openai = new OpenAI({
   apiKey: apiKey,
 });
 
-// Global socket.io server instance
-let io: SocketServer | null = null;
-
 /**
- * Set the Socket.IO server instance
- * @param socketServer The Socket.IO server instance
+ * Extract code blocks from a markdown string and return artifacts with cleaned text
  */
-export function setSocketServer(socketServer: SocketServer) {
-  io = socketServer;
-}
-
-/**
- * Extract code blocks from a markdown string
- * @param markdown The markdown string to parse
- * @returns Array of code blocks with language and content
- */
-/**
- * Process a response for code artifacts and emit them to the client
- * This function is now a fallback for non-streaming responses
- * @param content The response content to process
- * @param socketId The socket ID to emit artifacts to
- */
-export function processResponseForArtifacts(content: string, socketId: string) {
-  // Extract code blocks from the content
+export function extractArtifacts(content: string) {
   const codeBlocks = extractCodeBlocks(content);
-  
-  // Send each code block as an artifact
-  codeBlocks.forEach((codeBlock, index) => {
-    // Using non-null assertion since we've already checked io is not null in the calling function
-    io!.to(socketId).emit("artifact:new", {
-      id: `artifact-${Date.now()}-${index}`,
-      content: codeBlock.content,
-      language: codeBlock.language,
-      title: codeBlock.title || `Code Artifact ${index + 1}`
-    });
-  });
-  
-  // Remove artifact tags and standalone code blocks from the returned text
+  const artifacts = codeBlocks.map((block, index) => ({
+    id: `artifact-${Date.now()}-${index}`,
+    content: block.content,
+    language: block.language,
+    title: block.title || `Code Artifact ${index + 1}`
+  }));
+
   let cleaned = content.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
   cleaned = cleaned.replace(/```[\w-]*\n([\s\S]*?)```/g, '');
-  return cleaned;
+
+  return { cleaned, artifacts };
 }
 
 /**
@@ -174,19 +148,15 @@ export function getSystemPrompt(type: PromptType = PromptType.DEFAULT): string {
  * @returns The AI response or void if processing a pre-generated response
  */
 export async function generateResponse(
-  prompt: string, 
-  socketId?: string, 
+  prompt: string,
+  _socketId?: string,
   preGeneratedResponse?: string,
   promptType: PromptType = PromptType.DEFAULT
-): Promise<string | void> {
-  // If we have a pre-generated response, just process it for artifacts
+): Promise<string> {
+  // If we have a pre-generated response, just return cleaned content
   if (preGeneratedResponse) {
-    if (io && socketId) {
-      // Process the pre-generated response and return the cleaned content
-      const cleanedContent = processResponseForArtifacts(preGeneratedResponse, socketId);
-      return cleanedContent;
-    }
-    return; // No need to return anything if no socket connection
+    const { cleaned } = extractArtifacts(preGeneratedResponse);
+    return cleaned;
   }
 
   // Otherwise, generate a new response from OpenAI
@@ -207,14 +177,9 @@ export async function generateResponse(
 
     const content = response.choices[0].message.content || "No response generated";
     
-    // Process the response for artifacts and get cleaned content
-    if (io && socketId) {
-      const cleanedContent = processResponseForArtifacts(content, socketId);
-      return cleanedContent;
-    }
-
-    // If no socket connection, just return the content as is
-    return content;
+    // Clean the response of artifact tags
+    const { cleaned } = extractArtifacts(content);
+    return cleaned;
   } catch (error) {
     console.error("Error calling OpenAI API:", error);
     throw new Error("Failed to generate response from OpenAI");
