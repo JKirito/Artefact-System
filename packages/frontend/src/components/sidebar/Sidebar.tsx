@@ -16,7 +16,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
-  chats,
+  chats = [],
   currentChatId,
   onNewChat,
   onSelectChat,
