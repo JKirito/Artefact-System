@@ -14,6 +14,9 @@ if (!apiKey) {
   process.exit(1);
 }
 
+// Determine which model to use, defaulting to gpt-3.5-turbo for broader access
+export const defaultModel = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+
 // Initialize OpenAI client
 export const openai = new OpenAI({
   apiKey: apiKey,
@@ -163,7 +166,7 @@ export async function generateResponse(
   try {
     // For non-streaming responses
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: defaultModel,
       messages: [
         { 
           role: "system", 
