@@ -4,7 +4,7 @@ import express from "express";
 
 const router = express.Router();
 
-// POST endpoint to handle OpenAI prompts
+// POST endpoint to handle AI prompts (OpenAI or LMStudio)
 router.post("/prompt", handlePrompt);
 
 // SSE endpoint for chat streaming

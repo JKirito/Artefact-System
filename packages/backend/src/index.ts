@@ -30,7 +30,7 @@ app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "healthy" });
 });
 
-// OpenAI API routes
+// AI API routes (OpenAI or LMStudio)
 app.use("/api/openai", openaiRoutes);
 
 // Start the server

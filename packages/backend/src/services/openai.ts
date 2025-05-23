@@ -1,26 +1,121 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
-import { DEFAULT_SYSTEM_PROMPT, FRONTEND_SYSTEM_PROMPT, BACKEND_SYSTEM_PROMPT } from "../prompts/systemPrompt";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  FRONTEND_SYSTEM_PROMPT,
+  BACKEND_SYSTEM_PROMPT,
+} from "../prompts/systemPrompt";
 
 // Load environment variables from .env file
 dotenv.config();
 
-// Check if OpenAI API key is available
-const apiKey = process.env.OPENAI_KEY;
-if (!apiKey) {
-  console.error(
-    "OpenAI API key is missing. Please add OPENAI_KEY to your .env file."
+// Determine AI provider (lmstudio or openai)
+const aiProvider = process.env.AI_PROVIDER || "openai";
+
+// Export the provider for use in other files
+export { aiProvider };
+
+// Configuration based on provider
+let apiKey: string;
+let baseURL: string | undefined;
+let defaultModel: string;
+
+if (aiProvider === "lmstudio") {
+  // LMStudio configuration
+  apiKey = process.env.LMSTUDIO_API_KEY || "lm-studio";
+  let rawBaseURL = process.env.LMSTUDIO_BASE_URL || "http://localhost:1234";
+
+  // Ensure the baseURL ends with /v1 for LMStudio compatibility
+  if (!rawBaseURL.endsWith("/v1") && !rawBaseURL.endsWith("/v1/")) {
+    baseURL = rawBaseURL + "/v1";
+  } else {
+    baseURL = rawBaseURL.replace(/\/$/, ""); // Remove trailing slash if present
+  }
+
+  defaultModel = process.env.LMSTUDIO_MODEL || "gemma-3-1b-it";
+
+  console.log(`🤖 Using LMStudio at ${baseURL} with model: ${defaultModel}`);
+  console.log(
+    `💡 Make sure LMStudio server is running and the model is loaded!`
   );
-  process.exit(1);
+  console.log(
+    `💡 If you get endpoint errors, check that the model identifier matches what's shown in LMStudio`
+  );
+} else {
+  // OpenAI configuration
+  apiKey = process.env.OPENAI_KEY || "";
+  baseURL = undefined; // Use OpenAI's default base URL
+  defaultModel = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+
+  if (!apiKey) {
+    console.error(
+      "OpenAI API key is missing. Please add OPENAI_KEY to your .env file."
+    );
+    process.exit(1);
+  }
+
+  console.log(`🤖 Using OpenAI with model: ${defaultModel}`);
 }
 
-// Determine which model to use, defaulting to gpt-3.5-turbo for broader access
-export const defaultModel = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+// Export the model for use in other files
+export { defaultModel };
 
-// Initialize OpenAI client
+// Initialize OpenAI client (works with both OpenAI and LMStudio)
 export const openai = new OpenAI({
   apiKey: apiKey,
+  baseURL: baseURL,
 });
+
+/**
+ * Test the connection to the AI provider and list available models
+ * This is helpful for debugging LMStudio setup
+ */
+export async function testConnection(): Promise<void> {
+  if (aiProvider === "lmstudio") {
+    try {
+      console.log("🔍 Testing LMStudio connection...");
+      const models = await openai.models.list();
+      console.log("✅ LMStudio connection successful!");
+      console.log("📋 Available models:");
+
+      if (models.data && models.data.length > 0) {
+        models.data.forEach((model) => {
+          console.log(`   - ${model.id}`);
+        });
+
+        const modelExists = models.data.some((m) => m.id === defaultModel);
+        if (!modelExists) {
+          console.log(`⚠️  Model "${defaultModel}" not found in LMStudio.`);
+          console.log(
+            `💡 Available models: ${models.data.map((m) => m.id).join(", ")}`
+          );
+          console.log(
+            `💡 Update LMSTUDIO_MODEL in your .env file to match one of the available models.`
+          );
+        } else {
+          console.log(
+            `✅ Model "${defaultModel}" is available and ready to use!`
+          );
+        }
+      } else {
+        console.log(
+          "⚠️  No models loaded in LMStudio. Please load a model first."
+        );
+      }
+    } catch (error) {
+      console.error("❌ Failed to connect to LMStudio:", error);
+      console.log(
+        "💡 Make sure LMStudio is running and the server is started on the correct port."
+      );
+    }
+  }
+}
+
+// Test connection on startup for LMStudio
+if (aiProvider === "lmstudio") {
+  // Run connection test after a short delay to allow server startup
+  setTimeout(testConnection, 1000);
+}
 
 /**
  * Extract code blocks from a markdown string and return artifacts with cleaned text
@@ -31,11 +126,14 @@ export function extractArtifacts(content: string) {
     id: `artifact-${Date.now()}-${index}`,
     content: block.content,
     language: block.language,
-    title: block.title || `Code Artifact ${index + 1}`
+    title: block.title || `Code Artifact ${index + 1}`,
   }));
 
-  let cleaned = content.replace(/<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g, '');
-  cleaned = cleaned.replace(/```[\w-]*\n([\s\S]*?)```/g, '');
+  let cleaned = content.replace(
+    /<CODE_ARTIFACT>[\s\S]*?<\/CODE_ARTIFACT>/g,
+    ""
+  );
+  cleaned = cleaned.replace(/```[\w-]*\n([\s\S]*?)```/g, "");
 
   return { cleaned, artifacts };
 }
@@ -54,31 +152,33 @@ function extractCodeBlocks(markdown: string) {
   // Try to find code blocks with our special tags
   while ((match = taggedCodeBlockRegex.exec(markdown)) !== null) {
     const artifactContent = match[1].trim();
-    
+
     // Extract code block from artifact content
     const codeBlockMatch = artifactContent.match(/```([\w-]*)?\n([\s\S]*?)```/);
     if (codeBlockMatch) {
-      const language = codeBlockMatch[1]?.trim() || 'text';
+      const language = codeBlockMatch[1]?.trim() || "text";
       const content = codeBlockMatch[2].trim();
-      
+
       // Extract title from first line if it contains filename
-      let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
-      const firstLine = content.split('\n')[0];
-      if (firstLine && firstLine.includes('filename:')) {
-        title = firstLine.replace('//', '').trim();
+      let title = `${
+        language.charAt(0).toUpperCase() + language.slice(1)
+      } Code`;
+      const firstLine = content.split("\n")[0];
+      if (firstLine && firstLine.includes("filename:")) {
+        title = firstLine.replace("//", "").trim();
       }
-      
+
       codeBlocks.push({
         language,
         content,
-        title
+        title,
       });
     } else {
       // If no code block found in artifact, use the entire artifact content
       codeBlocks.push({
-        language: 'text',
+        language: "text",
         content: artifactContent,
-        title: 'Code Artifact'
+        title: "Code Artifact",
       });
     }
   }
@@ -88,20 +188,22 @@ function extractCodeBlocks(markdown: string) {
     const codeBlockRegex = /```([\w-]*)?\n([\s\S]*?)```/g;
 
     while ((match = codeBlockRegex.exec(markdown)) !== null) {
-      const language = match[1] || 'text';
+      const language = match[1] || "text";
       const content = match[2].trim();
 
       // Extract title from first line if it contains filename
-      let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
-      const firstLine = content.split('\n')[0];
-      if (firstLine && firstLine.includes('filename:')) {
-        title = firstLine.replace('//', '').trim();
+      let title = `${
+        language.charAt(0).toUpperCase() + language.slice(1)
+      } Code`;
+      const firstLine = content.split("\n")[0];
+      if (firstLine && firstLine.includes("filename:")) {
+        title = firstLine.replace("//", "").trim();
       }
 
       codeBlocks.push({
         language,
         content,
-        title
+        title,
       });
     }
   }
@@ -110,7 +212,7 @@ function extractCodeBlocks(markdown: string) {
 }
 
 /**
- * Send a prompt to OpenAI and get a response, or process a pre-generated response for artifacts
+ * Send a prompt to the AI provider (OpenAI or LMStudio) and get a response, or process a pre-generated response for artifacts
  * @param prompt The user's prompt
  * @param socketId Optional socket ID to send streaming responses
  * @param preGeneratedResponse Optional pre-generated response to process for artifacts
@@ -120,9 +222,9 @@ function extractCodeBlocks(markdown: string) {
  * Various system prompt types for different contexts
  */
 export enum PromptType {
-  DEFAULT = 'default',
-  FRONTEND = 'frontend',
-  BACKEND = 'backend'
+  DEFAULT = "default",
+  FRONTEND = "frontend",
+  BACKEND = "backend",
 }
 
 /**
@@ -143,7 +245,7 @@ export function getSystemPrompt(type: PromptType = PromptType.DEFAULT): string {
 }
 
 /**
- * Generate a response from OpenAI or process a pre-generated response
+ * Generate a response from the AI provider (OpenAI or LMStudio) or process a pre-generated response
  * @param prompt The user's prompt
  * @param socketId Optional socket ID for streaming responses
  * @param preGeneratedResponse Optional pre-generated response
@@ -162,15 +264,15 @@ export async function generateResponse(
     return cleaned;
   }
 
-  // Otherwise, generate a new response from OpenAI
+  // Otherwise, generate a new response from the AI provider
   try {
     // For non-streaming responses
     const response = await openai.chat.completions.create({
       model: defaultModel,
       messages: [
-        { 
-          role: "system", 
-          content: getSystemPrompt(promptType)
+        {
+          role: "system",
+          content: getSystemPrompt(promptType),
         },
         { role: "user", content: prompt },
       ],
@@ -178,13 +280,16 @@ export async function generateResponse(
       max_tokens: 1500,
     });
 
-    const content = response.choices[0].message.content || "No response generated";
-    
+    const content =
+      response.choices[0].message.content || "No response generated";
+
     // Clean the response of artifact tags
     const { cleaned } = extractArtifacts(content);
     return cleaned;
   } catch (error) {
-    console.error("Error calling OpenAI API:", error);
-    throw new Error("Failed to generate response from OpenAI");
+    console.error(`Error calling ${aiProvider.toUpperCase()} API:`, error);
+    throw new Error(
+      `Failed to generate response from ${aiProvider.toUpperCase()}`
+    );
   }
 }

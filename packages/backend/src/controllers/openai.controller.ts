@@ -2,7 +2,7 @@ import { generateResponse } from "@/services/openai";
 import { Request, Response } from "express";
 
 /**
- * Handle prompt requests to OpenAI
+ * Handle prompt requests to the AI provider (OpenAI or LMStudio)
  * @param req Express request
  * @param res Express response
  */
@@ -17,7 +17,7 @@ export async function handlePrompt(req: Request, res: Response) {
       });
     }
 
-    // Generate response from OpenAI
+    // Generate response from the AI provider
     const response = await generateResponse(prompt);
 
     // Return the response

@@ -4,10 +4,10 @@
   "description": "Frontend application with React, TypeScript, and Vite",
   "type": "module",
   "scripts": {
-    "dev": "npx vite",
-    "build": "tsc && npx vite build",
-    "preview": "npx vite preview",
-    "test": "npx vitest run"
+    "dev": "pnpm dlx vite",
+    "build": "tsc && pnpm dlx vite build",
+    "preview": "pnpm dlx vite preview",
+    "test": "pnpm dlx vitest run"
   },
   "keywords": [],
   "author": "",
