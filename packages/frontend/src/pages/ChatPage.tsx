@@ -25,6 +25,9 @@ function ChatPage() {
     chatSessions,
     createNewChat,
     loadChatSession,
+    // New thinking-related state
+    isThinking,
+    currentThinkingContent,
   } = useSocket();
 
   const { defaultSidebarOpen } = useSettings();
@@ -91,6 +94,8 @@ function ChatPage() {
             currentResponse={currentResponse}
             isTyping={isTyping}
             error={error}
+            isThinking={isThinking}
+            currentThinkingContent={currentThinkingContent}
             onSendMessage={handleSendMessage}
           />
         )}

@@ -3,12 +3,15 @@ import { Message as MessageType } from "../../types";
 import { MessageComponent } from "./Message";
 import { ChatInput } from "./ChatInput";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface ChatContainerProps {
   messages: MessageType[];
   currentResponse: string;
   isTyping: boolean;
   error: string;
+  isThinking: boolean;
+  currentThinkingContent: string;
   onSendMessage: (message: string) => void;
 }
 
@@ -17,6 +20,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   currentResponse,
   isTyping,
   error,
+  isThinking,
+  currentThinkingContent,
   onSendMessage,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -37,6 +42,18 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           messages.map((msg) => <MessageComponent key={msg.id} message={msg} />)
         )}
 
+        {/* Thinking indicator - shows when AI is thinking */}
+        {isThinking && (
+          <div className="self-start max-w-[80%]">
+            <ThinkingIndicator
+              isActive={isThinking}
+              thinkingContent={currentThinkingContent}
+              showContent={true}
+            />
+          </div>
+        )}
+
+        {/* Current response - shows the actual response content */}
         {currentResponse && (
           <div className="max-w-[80%] p-4 rounded-xl relative animate-[fadeIn_0.3s_ease-in-out] self-start bg-white/10 border border-white/20 rounded-bl-sm">
             <div className="whitespace-pre-wrap leading-6 break-words">
@@ -45,7 +62,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           </div>
         )}
 
-        {isTyping && (
+        {/* Regular typing indicator - shows when not thinking but still processing */}
+        {isTyping && !isThinking && !currentResponse && (
           <div className="self-start bg-white/10 rounded-xl p-4 flex items-center gap-1">
             <span className="w-2 h-2 bg-white/50 rounded-full inline-block animate-[bounce_1.5s_infinite_ease-in-out] [animation-delay:0s]"></span>
             <span className="w-2 h-2 bg-white/50 rounded-full inline-block animate-[bounce_1.5s_infinite_ease-in-out] [animation-delay:0.2s]"></span>

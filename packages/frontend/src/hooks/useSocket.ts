@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Message, Artifact, ChatSummary } from "../types";
+import { Message, Artifact, ChatSummary, ParsedChunk } from "../types";
 import { ChatService } from "../services/chatService";
+import { StreamParser } from "../utils/streamParser";
 
 export enum PromptType {
   DEFAULT = "default",
@@ -20,6 +21,9 @@ interface UseChatReturn {
   isArtifactOpen: boolean;
   currentSessionId: string | null;
   chatSessions: ChatSummary[];
+  // New parser-related state
+  isThinking: boolean;
+  currentThinkingContent: string;
   openArtifact: (artifact: Artifact) => void;
   closeArtifact: () => void;
   toggleArtifact: () => void;
@@ -43,6 +47,10 @@ export const useSocket = (): UseChatReturn => {
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSummary[]>([]);
+  // New parser-related state
+  const [isThinking, setIsThinking] = useState(false);
+  const [currentThinkingContent, setCurrentThinkingContent] = useState("");
+  const streamParserRef = useRef<StreamParser | null>(null);
 
   useEffect(() => {
     const checkBackendConnection = async () => {
@@ -85,23 +93,86 @@ export const useSocket = (): UseChatReturn => {
       switch (event) {
         case "typing":
           setIsTyping(payload.status);
+          // Initialize parser when typing starts
+          if (payload.status && !streamParserRef.current) {
+            streamParserRef.current = new StreamParser();
+          }
+          // Reset parser state when typing stops
+          if (!payload.status && streamParserRef.current) {
+            streamParserRef.current.reset();
+            setIsThinking(false);
+            setCurrentThinkingContent("");
+          }
           break;
         case "chunk":
-          if (payload.content) {
-            setCurrentResponse((prev) => prev + payload.content);
+          if (payload.content && streamParserRef.current) {
+            // Parse the chunk through our stream parser
+            const parsedChunk: ParsedChunk = streamParserRef.current.parseChunk(
+              payload.content,
+              false
+            );
+
+            // Update display content (only show non-empty content)
+            if (parsedChunk.displayContent) {
+              setCurrentResponse(parsedChunk.displayContent);
+            }
+
+            // Update thinking state
+            setIsThinking(parsedChunk.isThinkingActive);
+            setCurrentThinkingContent(parsedChunk.thinkingContent || "");
+
+            // Handle any new artifacts
+            if (parsedChunk.artifacts.length > 0) {
+              const latestArtifact =
+                parsedChunk.artifacts[parsedChunk.artifacts.length - 1];
+              setArtifact(latestArtifact);
+              setIsArtifactOpen(true);
+            }
           }
           break;
         case "complete":
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: payload.id,
-              content: payload.content,
-              sender: "ai",
-              timestamp: new Date(),
-            },
-          ]);
-          setCurrentResponse("");
+          if (streamParserRef.current) {
+            // Final parse with completion flag
+            const finalParsed = streamParserRef.current.parseChunk("", true);
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: payload.id,
+                content: finalParsed.displayContent,
+                sender: "ai",
+                timestamp: new Date(),
+                parsedContent: {
+                  displayContent: finalParsed.displayContent,
+                  thinkingContent: finalParsed.thinkingContent,
+                  artifacts: finalParsed.artifacts,
+                  hasActiveThinking: false,
+                },
+                isThinking: false,
+              },
+            ]);
+
+            // Reset current response and thinking state
+            setCurrentResponse("");
+            setIsThinking(false);
+            setCurrentThinkingContent("");
+
+            // Clean up parser
+            streamParserRef.current.reset();
+          } else {
+            // Fallback to original behavior if parser not available
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: payload.id,
+                content: payload.content,
+                sender: "ai",
+                timestamp: new Date(),
+              },
+            ]);
+            setCurrentResponse("");
+          }
+
           // Update session info if provided
           if (payload.sessionId && payload.sessionTitle) {
             setCurrentSessionId(payload.sessionId);
@@ -122,6 +193,12 @@ export const useSocket = (): UseChatReturn => {
         case "error":
           setError(payload.message || "Unknown error");
           setIsTyping(false);
+          // Reset parser on error
+          if (streamParserRef.current) {
+            streamParserRef.current.reset();
+          }
+          setIsThinking(false);
+          setCurrentThinkingContent("");
           break;
       }
     } catch (err) {
@@ -295,6 +372,9 @@ export const useSocket = (): UseChatReturn => {
     isArtifactOpen,
     currentSessionId,
     chatSessions,
+    // New parser-related state
+    isThinking,
+    currentThinkingContent,
     openArtifact,
     closeArtifact,
     toggleArtifact,
