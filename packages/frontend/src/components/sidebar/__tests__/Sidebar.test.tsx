@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { Sidebar, ChatSummary } from '../Sidebar';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { Sidebar } from "../Sidebar";
+import { ChatSummary } from "../../../types";
 
-describe('Sidebar', () => {
-  it('shows placeholder when no chats', () => {
+describe("Sidebar", () => {
+  it("shows placeholder when no chats", () => {
     render(
       <Sidebar
         isOpen={true}
@@ -16,10 +17,10 @@ describe('Sidebar', () => {
     expect(screen.getByText(/No conversations yet/i)).toBeInTheDocument();
   });
 
-  it('calls onSelectChat when chat item clicked', () => {
+  it("calls onSelectChat when chat item clicked", () => {
     const chats: ChatSummary[] = [
-      { id: '1', title: 'First' },
-      { id: '2', title: 'Second' },
+      { id: "1", title: "First", updatedAt: new Date() },
+      { id: "2", title: "Second", updatedAt: new Date() },
     ];
     const onSelect = vi.fn<[string], void>();
     render(
@@ -31,7 +32,27 @@ describe('Sidebar', () => {
         onSelectChat={onSelect}
       />
     );
-    fireEvent.click(screen.getByText('Second'));
-    expect(onSelect).toHaveBeenCalledWith('2');
+    fireEvent.click(screen.getByText("Second"));
+    expect(onSelect).toHaveBeenCalledWith("2");
+  });
+
+  it("calls onClose when overlay is clicked on mobile", () => {
+    const onClose = vi.fn();
+    render(
+      <Sidebar
+        isOpen={true}
+        chats={[]}
+        currentChatId=""
+        onNewChat={() => {}}
+        onSelectChat={() => {}}
+        onClose={onClose}
+      />
+    );
+
+    const overlay = document.querySelector(".fixed.inset-0.bg-black\\/50");
+    if (overlay) {
+      fireEvent.click(overlay);
+      expect(onClose).toHaveBeenCalled();
+    }
   });
 });

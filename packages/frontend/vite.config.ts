@@ -1,20 +1,21 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:3002', // Updated to new backend port
+      "/api": {
+        target: "http://localhost:3002", // Updated to new backend port
         changeOrigin: true,
         // No rewrite - keep the /api prefix
       },
-      '/socket.io': {
-        target: 'http://localhost:3002', // Updated to new backend port
+      "/socket.io": {
+        target: "http://localhost:3002", // Updated to new backend port
         changeOrigin: true,
         ws: true,
       },
@@ -22,7 +23,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(process.cwd(), './src'),
+      "@": path.resolve(process.cwd(), "./src"),
     },
   },
 });

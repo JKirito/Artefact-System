@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import openaiRoutes from "@/routes/openai.routes";
+import chatRoutes from "@/routes/chat.routes";
 
 // Load environment variables
 dotenv.config();
@@ -16,7 +17,7 @@ app.use(
   cors({
     origin: "http://localhost:3000",
     credentials: true,
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
   })
 );
@@ -32,6 +33,9 @@ app.get("/api/health", (req: Request, res: Response) => {
 
 // AI API routes (OpenAI or LMStudio)
 app.use("/api/openai", openaiRoutes);
+
+// Chat session management routes
+app.use("/api/chat", chatRoutes);
 
 // Start the server
 app.listen(PORT, () => {

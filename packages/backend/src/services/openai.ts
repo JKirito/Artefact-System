@@ -2,8 +2,6 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 import {
   DEFAULT_SYSTEM_PROMPT,
-  FRONTEND_SYSTEM_PROMPT,
-  BACKEND_SYSTEM_PROMPT,
 } from "../prompts/systemPrompt";
 
 // Load environment variables from .env file
@@ -234,10 +232,6 @@ export enum PromptType {
  */
 export function getSystemPrompt(type: PromptType = PromptType.DEFAULT): string {
   switch (type) {
-    case PromptType.FRONTEND:
-      return FRONTEND_SYSTEM_PROMPT;
-    case PromptType.BACKEND:
-      return BACKEND_SYSTEM_PROMPT;
     case PromptType.DEFAULT:
     default:
       return DEFAULT_SYSTEM_PROMPT;

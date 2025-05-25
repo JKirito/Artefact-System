@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Message, Artifact } from "../types";
+import { Message, Artifact, ChatSummary } from "../types";
+import { ChatService } from "../services/chatService";
 
 export enum PromptType {
-  DEFAULT = 'default',
-  FRONTEND = 'frontend',
-  BACKEND = 'backend'
+  DEFAULT = "default",
+  FRONTEND = "frontend",
+  BACKEND = "backend",
 }
 
 interface UseChatReturn {
@@ -17,12 +18,18 @@ interface UseChatReturn {
   error: string;
   artifact: Artifact | null;
   isArtifactOpen: boolean;
+  currentSessionId: string | null;
+  chatSessions: ChatSummary[];
   openArtifact: (artifact: Artifact) => void;
   closeArtifact: () => void;
   toggleArtifact: () => void;
   sendMessage: (message: string, promptType?: PromptType) => Promise<void>;
   setChatMessages: (msgs: Message[]) => void;
   resetChat: () => void;
+  createNewChat: () => Promise<void>;
+  loadChatSession: (sessionId: string) => Promise<void>;
+  loadChatSessions: () => Promise<void>;
+  deleteChat: (sessionId: string) => Promise<void>;
 }
 
 export const useSocket = (): UseChatReturn => {
@@ -34,6 +41,8 @@ export const useSocket = (): UseChatReturn => {
   const [error, setError] = useState("");
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [chatSessions, setChatSessions] = useState<ChatSummary[]>([]);
 
   useEffect(() => {
     const checkBackendConnection = async () => {
@@ -42,6 +51,8 @@ export const useSocket = (): UseChatReturn => {
         if (response.data.status === "healthy") {
           setIsConnected(true);
           setConnectionStatus("Connected to backend successfully!");
+          // Load existing chat sessions
+          await loadChatSessions();
         }
       } catch (err) {
         setIsConnected(false);
@@ -91,6 +102,12 @@ export const useSocket = (): UseChatReturn => {
             },
           ]);
           setCurrentResponse("");
+          // Update session info if provided
+          if (payload.sessionId && payload.sessionTitle) {
+            setCurrentSessionId(payload.sessionId);
+            // Refresh chat sessions to update titles
+            loadChatSessions();
+          }
           break;
         case "artifact":
           setArtifact({
@@ -123,6 +140,21 @@ export const useSocket = (): UseChatReturn => {
 
     setError("");
 
+    // Create new session if none exists
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      try {
+        const newSession = await ChatService.createSession();
+        sessionId = newSession.id;
+        setCurrentSessionId(sessionId);
+        await loadChatSessions(); // Refresh the sessions list
+      } catch (err) {
+        console.error("Failed to create new session:", err);
+        setError("Failed to create new chat session");
+        return;
+      }
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content: message,
@@ -137,6 +169,7 @@ export const useSocket = (): UseChatReturn => {
     const params = new URLSearchParams({
       message,
       promptType,
+      sessionId: sessionId,
     });
 
     try {
@@ -169,6 +202,67 @@ export const useSocket = (): UseChatReturn => {
     }
   };
 
+  const createNewChat = async () => {
+    try {
+      const newSession = await ChatService.createSession();
+      setCurrentSessionId(newSession.id);
+      setMessages([]);
+      setCurrentResponse("");
+      setArtifact(null);
+      setIsArtifactOpen(false);
+      setError("");
+      await loadChatSessions(); // Refresh the sessions list
+    } catch (err) {
+      console.error("Failed to create new chat:", err);
+      setError("Failed to create new chat");
+    }
+  };
+
+  const loadChatSession = async (sessionId: string) => {
+    try {
+      const session = await ChatService.getSession(sessionId);
+      setCurrentSessionId(sessionId);
+      // Convert backend messages to frontend format
+      const frontendMessages: Message[] = session.messages.map((msg) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp),
+      }));
+      setMessages(frontendMessages);
+      setCurrentResponse("");
+      setError("");
+    } catch (err) {
+      console.error("Failed to load chat session:", err);
+      setError("Failed to load chat session");
+    }
+  };
+
+  const loadChatSessions = async () => {
+    try {
+      const sessions = await ChatService.getSessions();
+      setChatSessions(sessions);
+    } catch (err) {
+      console.error("Failed to load chat sessions:", err);
+    }
+  };
+
+  const deleteChat = async (sessionId: string) => {
+    try {
+      await ChatService.deleteSession(sessionId);
+      // If we're deleting the current session, reset to empty state
+      if (sessionId === currentSessionId) {
+        setCurrentSessionId(null);
+        setMessages([]);
+        setCurrentResponse("");
+        setArtifact(null);
+        setIsArtifactOpen(false);
+      }
+      await loadChatSessions(); // Refresh the sessions list
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+      setError("Failed to delete chat");
+    }
+  };
+
   const openArtifact = (artifactData: Artifact) => {
     setArtifact(artifactData);
     setIsArtifactOpen(true);
@@ -187,10 +281,7 @@ export const useSocket = (): UseChatReturn => {
   };
 
   const resetChat = () => {
-    setMessages([]);
-    setCurrentResponse("");
-    setArtifact(null);
-    setIsArtifactOpen(false);
+    createNewChat();
   };
 
   return {
@@ -202,11 +293,17 @@ export const useSocket = (): UseChatReturn => {
     error,
     artifact,
     isArtifactOpen,
+    currentSessionId,
+    chatSessions,
     openArtifact,
     closeArtifact,
     toggleArtifact,
     sendMessage,
     setChatMessages,
     resetChat,
+    createNewChat,
+    loadChatSession,
+    loadChatSessions,
+    deleteChat,
   };
 };
